@@ -5,6 +5,7 @@
 
 #define BW_LED 12
 #define FW_LED 11
+#define BLINK_LED 4
 #define LF_SERVO 8
 #define RT_SERVO 9
 #define HC_TRIG 10
@@ -21,12 +22,15 @@ bool reversing = false;
 bool forwarding = false;
 bool coasting = true;
 bool stopped = true;
-int timeout = TIMEOUT;
 float reg = 0;
 float X = 0;
 float Y = 0;
 float lastX = 0;
 float lastY = 0;
+unsigned int timeout = TIMEOUT;
+unsigned int blink_state = LOW;
+unsigned long blink_interval = 300;
+unsigned long previous = 0;
 
 void setup(void) 
 {
@@ -42,6 +46,7 @@ void setup(void)
 
   pinMode(BW_LED, OUTPUT);
   pinMode(FW_LED, OUTPUT);
+  pinMode(BLINK_LED, OUTPUT);
 
   servo_l.attach(LF_SERVO);
   servo_l.write(0);
@@ -63,7 +68,7 @@ void deactivate() {
   servo_r.write(0);
 }
 
-void getDistance() {
+float getDistance() {
   digitalWrite(HC_TRIG, LOW);
   delayMicroseconds(2);
   digitalWrite(HC_TRIG, HIGH);
@@ -76,7 +81,7 @@ void getDistance() {
   Serial.print("Distance = ");
   Serial.print(distance);
   Serial.print("\n");
- 
+  return distance;
 }
 
 void loop(void) 
@@ -85,7 +90,7 @@ void loop(void)
   sensors_event_t event; 
   accel.getEvent(&event);
 
-  X = lastX * 0.5 + event.acceleration.x * 0.5;
+  //X = lastX * 0.5 + event.acceleration.x * 0.5;
   Y = lastY * 0.5 + event.acceleration.y * 0.5;
   
   /* Display the results (acceleration is measured in m/s^2) */
@@ -95,17 +100,24 @@ void loop(void)
   if (reversing) {
     digitalWrite(BW_LED, HIGH);
     activate();
-    getDistance();
+    float d = getDistance();
+    unsigned long current = millies();
+
+    if (curent - previous >= blink_interval) {
+      previous = current;
+
+      if (blink_state == LOW) blink_state = HIGH;
+      else blink_state = LOW;
+
+      digitalWrite(BLINK_LED, blink_state);
+    }
   }
   else {
     digitalWrite(BW_LED, LOW);
     deactivate();
   }
-  
-  if (forwarding)
-    digitalWrite(FW_LED, HIGH);
-  else
-    digitalWrite(FW_LED, LOW);
+  if (forwarding) digitalWrite(FW_LED, HIGH);
+  else digitalWrite(FW_LED, LOW);
  
   if (Y > 1) {
     // backwards acceleration
@@ -158,8 +170,5 @@ void loop(void)
     }
   }
 
-  if (timeout < 0)
-    reversing = false;
-   
   delay(10);
 }
