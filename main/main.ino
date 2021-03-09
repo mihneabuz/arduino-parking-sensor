@@ -11,7 +11,7 @@
 #define HC_TRIG 10
 #define HC_LF 5
 #define HC_RT 6
-#define TIMEOUT 500
+#define TIMEOUT 2000
 
 /* Assign a unique ID to this sensor at the same time */
 Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
@@ -27,7 +27,7 @@ float X = 0;
 float Y = 0;
 float lastX = 0;
 float lastY = 0;
-unsigned int timeout = TIMEOUT;
+int timeout = TIMEOUT;
 unsigned int blink_state = LOW;
 unsigned long blink_interval = 300;
 unsigned long previous = 0;
@@ -78,9 +78,9 @@ float getDistance() {
   //float distance = min(pulseIn(HC_LF, HIGH), pulseIn(HC_RT, HIGH));
   float distance = pulseIn(HC_LF, HIGH);
 
-  Serial.print("Distance = ");
-  Serial.print(distance);
-  Serial.print("\n");
+  //Serial.print("Distance = ");
+  //Serial.print(distance);
+  //Serial.print("\n");
   return distance;
 }
 
@@ -100,10 +100,11 @@ void loop(void)
   if (reversing) {
     digitalWrite(BW_LED, HIGH);
     activate();
-    float d = getDistance();
-    unsigned long current = millies();
+    float d = 2000;//= getDistance();
+    blink_interval = d / 10 + 50;
 
-    if (curent - previous >= blink_interval) {
+    unsigned long current = millis();
+    if (current - previous >= blink_interval) {
       previous = current;
 
       if (blink_state == LOW) blink_state = HIGH;
@@ -118,8 +119,16 @@ void loop(void)
   }
   if (forwarding) digitalWrite(FW_LED, HIGH);
   else digitalWrite(FW_LED, LOW);
- 
-  if (Y > 1) {
+
+  Serial.print(timeout); Serial.print("\n");
+  if (Y > 1.5) {
+    forwarding = true;
+    reversing = false;
+    stopped = false;
+    timeout = TIMEOUT;
+    Serial.print("Braking\n");
+  }
+  else if (Y > 0.5) {
     // backwards acceleration
     if (stopped) {
       Serial.print("Start reversing\n");
@@ -131,20 +140,22 @@ void loop(void)
       timeout = TIMEOUT;
     }
     else if (forwarding) {
-      timeout -= 40;
+      timeout -= 20;
       if (timeout < 0) {
         forwarding = false;
         stopped = true;
+        timeout = TIMEOUT;
       }
     }
   }
-  else if (Y > -1) {
+  else if (Y > -0.5) {
     // no acceleration
     if (reversing) {
       timeout--;
       if (timeout < 0) {
         reversing = false;
         stopped = true;
+        timeout = TIMEOUT;
       }
     }
     if (forwarding) {
@@ -162,13 +173,12 @@ void loop(void)
       timeout = TIMEOUT;
     }
     if (reversing) {
-      timeout -= 20;
+      timeout -= 40;
       if (timeout < 0) {
         reversing = false;
         stopped = true;
+        timeout = TIMEOUT;
       }
     }
   }
-
-  delay(10);
 }
