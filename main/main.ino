@@ -5,12 +5,13 @@
 
 #define BW_LED 12
 #define FW_LED 11
-#define BLINK_LED 4
+#define BLINK_LED 3
 #define LF_SERVO 8
-#define RT_SERVO 9
-#define HC_TRIG 10
-#define HC_LF 5
-#define HC_RT 6
+#define RT_SERVO 7
+#define HC_TRIG_LF 10
+#define HC_TRIG_RT 9
+#define HC_ECHO_LF 5
+#define HC_ECHO_RT 4
 #define TIMEOUT 2000
 
 /* Assign a unique ID to this sensor at the same time */
@@ -20,7 +21,6 @@ Servo servo_l, servo_r;
 
 bool reversing = false;
 bool forwarding = false;
-bool coasting = true;
 bool stopped = true;
 float reg = 0;
 float X = 0;
@@ -38,7 +38,7 @@ void setup(void)
  
   while(!accel.begin()) {
     Serial.println("Erorr: no ADXL345 detected\n");
-    delay(1000);
+    delay(500);
   }
  
   /* Set the range */
@@ -53,9 +53,10 @@ void setup(void)
   servo_r.attach(RT_SERVO);
   servo_r.write(0);
 
-  pinMode(HC_TRIG, OUTPUT);
-  pinMode(HC_LF, INPUT);
-  pinMode(HC_RT, INPUT);
+  pinMode(HC_TRIG_LF, OUTPUT);
+  pinMode(HC_TRIG_RT, OUTPUT);
+  pinMode(HC_ECHO_LF, INPUT);
+  pinMode(HC_ECHO_RT, INPUT);
 }
 
 void activate() {
@@ -68,15 +69,14 @@ void deactivate() {
   servo_r.write(0);
 }
 
-float getDistance() {
-  digitalWrite(HC_TRIG, LOW);
-  delayMicroseconds(2);
-  digitalWrite(HC_TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(HC_TRIG, LOW);
+float getDistance(int trig, int echo) {
+  digitalWrite(trig, LOW);
+  delayMicroseconds(1);
+  digitalWrite(trig, HIGH);
+  delayMicroseconds(5);
+  digitalWrite(trig, LOW);
 
-  //float distance = min(pulseIn(HC_LF, HIGH), pulseIn(HC_RT, HIGH));
-  float distance = pulseIn(HC_LF, HIGH);
+  float distance = pulseIn(echo, HIGH);
 
   //Serial.print("Distance = ");
   //Serial.print(distance);
@@ -91,17 +91,30 @@ void loop(void)
   accel.getEvent(&event);
 
   //X = lastX * 0.5 + event.acceleration.x * 0.5;
-  Y = lastY * 0.5 + event.acceleration.y * 0.5;
-  
-  /* Display the results (acceleration is measured in m/s^2) */
+  Y = event.acceleration.y;
+   
   //Serial.print("X: "); Serial.print(X); Serial.print(" ");
   //Serial.print("Y: "); Serial.print(Y); Serial.print("\n");
   
   if (reversing) {
     digitalWrite(BW_LED, HIGH);
     activate();
-    float d = 2000;//= getDistance();
-    blink_interval = d / 10 + 50;
+    float d1 = getDistance(HC_TRIG_LF, HC_ECHO_LF);
+    float d2 = 10000;//getDistance(HC_TRIG_RT, HC_ECHO_RT);
+    float m = min(d1, d2);
+
+    if (m > 6000)
+      blink_interval = 10000000;
+    else if (m > 4000)
+      blink_interval = 800;    
+    else if (m > 3000)
+      blink_interval = 500;
+    else if (m > 2000)
+      blink_interval = 300;
+    else if (m > 1000)
+      blink_interval = 200;
+      
+    Serial.println(blink_interval);
 
     unsigned long current = millis();
     if (current - previous >= blink_interval) {
@@ -117,21 +130,20 @@ void loop(void)
     digitalWrite(BW_LED, LOW);
     deactivate();
   }
+  
   if (forwarding) digitalWrite(FW_LED, HIGH);
   else digitalWrite(FW_LED, LOW);
+  //Serial.print(timeout); Serial.print("\n");
 
-  Serial.print(timeout); Serial.print("\n");
-  if (Y > 1.5) {
+  if (Y > 6) {
     forwarding = true;
     reversing = false;
     stopped = false;
     timeout = TIMEOUT;
-    Serial.print("Braking\n");
   }
   else if (Y > 0.5) {
     // backwards acceleration
     if (stopped) {
-      Serial.print("Start reversing\n");
       reversing = true;
       stopped = false;
       timeout = TIMEOUT;   
@@ -165,7 +177,6 @@ void loop(void)
   else {
     // forward acceleration
     if (stopped) {
-      Serial.print("Start forwarding\n");
       stopped = false;
       forwarding = true;
     }
